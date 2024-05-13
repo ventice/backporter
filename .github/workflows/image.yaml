@@ -1,0 +1,45 @@
+name: Python CI with Docker
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+
+    - name: Install packages
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y rcs
+        
+    - name: Run tests with pytest
+      run: |
+        pip install pytest
+        pytest
+
+    - name: Build Docker image
+      run: |
+        docker build -t ventice/backtracker:latest .
+
+    - name: Push Docker image to DockerHub
+      run: |
+        echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
+        docker push ventice/backtracker:latest
+      env:
+        DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+        DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
