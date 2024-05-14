@@ -97,15 +97,39 @@ def test_patch_parses_diff_file_contents(mock_system, monkeypatch):
     mock_system.read = Mock(return_value=['hello', 'world'])
     parse_diff = Mock()
     import backport
-    parsed_hunks = [backport.Hunk()]
+    parsed_hunks = [backport.Hunk(None, None, None)]
     parse_diff.return_value = parsed_hunks
     monkeypatch.setattr('formats.parse_diff', parse_diff)
     hunks = backport.SystemPatch('patch', 'tempdir').get_hunks()
     assert parse_diff.call_args.args[0] == ['hello', 'world']
     assert hunks == parsed_hunks
 
-def test_reject_reads_the_file(mock_system):
+def test_reject_parses_the_reject_file(mock_system, monkeypatch):
+    mock_system.read = Mock(return_value=['hello', 'world'])
+    parse_reject = Mock()
     import backport
-    patch = backport.SystemRejection('reject')
-    patch.get_hunks()
-    assert mock_system.read.call_args.args == ('reject',)
+    parsed_hunks = [backport.Hunk(None, None, None)]
+    parse_reject.return_value = parsed_hunks
+    monkeypatch.setattr('formats.parse_reject', parse_reject)
+    hunks = backport.SystemRejection('reject').get_hunks()
+    assert parse_reject.call_args.args[0] == ['hello', 'world']
+    assert hunks == parsed_hunks
+
+def test_passes_hunks_to_processor(monkeypatch):
+    reject = Mock()
+    patch = Mock(apply=Mock(return_value=reject))
+    monkeypatch.setattr('backport.SystemMerger', Mock(return_value=Mock(get_diff=Mock(return_value=patch))))
+    import backport
+    processor = Mock()
+    backport.merge('before', 'after', 'target', processor)
+    assert processor.process_diff.call_args.args == (patch,)
+    assert processor.process_reject.call_args.args == (reject,)
+    assert processor.finalize.call_count == 1
+
+def test_does_not_pass_hunks_if_no_rejection(monkeypatch):
+    patch = Mock(apply=Mock(return_value=None))
+    monkeypatch.setattr('backport.SystemMerger', Mock(return_value=Mock(get_diff=Mock(return_value=patch))))
+    import backport
+    processor = Mock()
+    backport.merge('before', 'after', 'target', processor)
+    assert processor.process_reject.call_count == 0

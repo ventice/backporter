@@ -25,7 +25,7 @@ def test_parse_hunk_header():
     assert hunk.destination.end == 7
 
 def test_parses_change():
-    hunk = formats.Hunk()
+    hunk = formats.Hunk(None, formats.Chunk(None), formats.Chunk(None))
     context = formats.ChangedContext(hunk)
     assert hunk.type == formats.ChangeType.CHANGED
     assert context.process('< Hello')
@@ -38,7 +38,7 @@ def test_parses_change():
     assert hunk.destination.body == ['Salut', 'Monde']
 
 def test_throws_when_double_separator():
-    hunk = formats.Hunk()
+    hunk = formats.Hunk(None, formats.Chunk(None), formats.Chunk(None))
     context = formats.ChangedContext(hunk)
     assert context.process('---')
     assert context.process('> Hello')
@@ -46,7 +46,7 @@ def test_throws_when_double_separator():
         context.process('---')
 
 def test_parses_addition():
-    hunk = formats.Hunk()
+    hunk = formats.Hunk(None, formats.Chunk(None), formats.Chunk(None))
     context = formats.AddedContext(hunk)
     assert hunk.type == formats.ChangeType.ADDED
     assert context.process('> Hello')
@@ -56,7 +56,7 @@ def test_parses_addition():
     assert hunk.destination.body == ['Hello', 'World']
 
 def test_parses_deletion():
-    hunk = formats.Hunk()
+    hunk = formats.Hunk(None, formats.Chunk(None), formats.Chunk(None))
     context = formats.DeletedContext(hunk)
     assert hunk.type == formats.ChangeType.DELETED
     assert context.process('< Hello')

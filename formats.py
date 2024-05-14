@@ -20,13 +20,13 @@ class ChangeType(Enum):
 
 @dataclass
 class Hunk:
-    type: ChangeType = ChangeType.CHANGED,
-    source: Chunk = Chunk(0, body=None)
-    destination: Chunk = Chunk(0, body=None)
+    type: ChangeType
+    source: Chunk
+    destination: Chunk
 
     @property
     def id(self):
-        return tuple(filter(None, (self.source.begin, self.source.end)))
+        return self.source.begin
 
     def to_dict(self):
         return {
@@ -38,8 +38,6 @@ class Hunk:
 
 class FormatError(Exception):
     pass
-
-_HEADER_PATTERN = re.compile(r'^(\d+(?:,\d+)?)(\w)(\d+(?:,\d+)?)$')
 
 class Context(ABC):
     def __init__(self, hunk: Hunk):
@@ -115,7 +113,7 @@ _CONTEXTS = {
 }
 
 def parse_hunk_header(groups: tuple) -> Hunk:
-    result = Hunk()
+    result = Hunk(type=None, source=Chunk(begin=0), destination=Chunk(begin=0))
     source = list(map(int, groups[0].split(',')))
     if not (1 <= len(source) <= 2):
         raise FormatError(f'Source coordinates in bad format "{groups[0]}"')
@@ -129,6 +127,8 @@ def parse_hunk_header(groups: tuple) -> Hunk:
     result.destination.end = dest[1] if len(dest) > 1 else result.destination.begin
     return result
 
+_DIFF_HEADER_PATTERN = re.compile(r'^(\d+(?:,\d+)?)(\w)(\d+(?:,\d+)?)$')
+
 def parse_diff(lines, contexts=_CONTEXTS) -> List[Hunk]:
     result:  List[Hunk] = []
     context: Context = None
@@ -139,7 +139,7 @@ def parse_diff(lines, contexts=_CONTEXTS) -> List[Hunk]:
                 continue
             result.append(hunk)
 
-        match = _HEADER_PATTERN.match(line)
+        match = _DIFF_HEADER_PATTERN.match(line.strip())
         if not match:
             raise FormatError(f'Bad header format: "{line}"')
 
@@ -150,5 +150,54 @@ def parse_diff(lines, contexts=_CONTEXTS) -> List[Hunk]:
 
 
 def parse_reject(lines) -> List[Hunk]:
-    pass
+    result = []
+    hunk: Hunk = None
+    def hunk_separator(groups):
+        nonlocal hunk
+        if hunk:
+            result.append(hunk)
+        hunk = Hunk(ChangeType.CHANGED, Chunk(0), Chunk(0))
+
+    def header(groups):
+        nums = list(map(int, groups[0].split(',')))
+        if not (1 <= len(nums) <= 2):
+            raise FormatError(f'Bad format of line numbers in header {groups[0]}')
+        hunk.source.begin = nums[0]
+        hunk.source.end = nums[1] if len(nums) > 1 else hunk.source.begin
+
+    def chunk_separator(groups):
+        nums = list(map(int, groups[0].split(',')))
+        if not (1 <= len(nums) <= 2):
+            raise FormatError(f'Bad format of line numbers in separator {groups[0]}')
+        hunk.destination.begin = nums[0]
+        hunk.destination.end = nums[1] if len(nums) > 1 else hunk.destination.begin
+
+    def source(groups):
+        if not hunk.source.body:
+            hunk.source.body = []
+        hunk.source.body.append(groups[0])
+
+    def destination(groups):
+        if not hunk.destination.body:
+            hunk.destination.body = []
+        hunk.destination.body.append(groups[0])
+
+    patterns = [
+        (re.compile(r'^\*{10,}$'), hunk_separator),
+        (re.compile(r'^\*{3} (\d+(?:,\d+)?)$'), header),
+        (re.compile(r'^-{3} (\d+(?:,\d+)?) -{5,}$'), chunk_separator),
+        (re.compile(r'^- (.*)$'), source),
+        (re.compile(r'^\+ (.*)$'), destination)
+    ]
+    for line in lines[2:]:
+        line = line.rstrip('\n')
+        for pattern, handler in patterns:
+            if match := pattern.match(line):
+                handler(match.groups())
+                break
+        else:
+            raise FormatError(f'Got unexpected line {line}')
+
+    result.append(hunk)
+    return result
 
