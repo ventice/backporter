@@ -4,11 +4,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.absolute()))
 from unittest.mock import Mock, MagicMock
 
-@pytest.fixture
-def mock_system(monkeypatch):
-    system = Mock()
-    monkeypatch.setattr('backport.System', system)
-    return system
 
 def test_temp_directory_is_used_for_diff(monkeypatch):
     temp = MagicMock()
@@ -88,7 +83,7 @@ def test_system_invokes_diff(monkeypatch):
     monkeypatch.setattr('subprocess.run', run)
     import backport
     backport.System.diff('before', 'after', 'patch')
-    assert run.call_args.args == ('diff after before > patch',)
+    assert run.call_args.args == ('diff before after > patch',)
 
 
 def test_system_invokes_patch(monkeypatch):
@@ -96,4 +91,17 @@ def test_system_invokes_patch(monkeypatch):
     monkeypatch.setattr('subprocess.run', run)
     import backport
     backport.System.patch('target', 'patch', 'reject')
-    assert run.call_args.args == ('patch -r reject target patch',)
+    assert run.call_args.args == ('patch -f -r reject target patch',)
+
+def test_patch_reads_the_file(mock_system):
+    import backport
+    patch = backport.SystemPatch('patch', 'tempdir')
+    patch.get_hunks()
+    assert mock_system.read.call_args.args == ('patch',)
+
+def test_reject_reads_the_file(mock_system):
+    import backport
+    patch = backport.SystemRejection('reject')
+    patch.get_hunks()
+    assert mock_system.read.call_args.args == ('reject',)
+

@@ -88,15 +88,18 @@ class System:
 
     @staticmethod
     def diff(before: str, after: str, patch: str) -> subprocess.CompletedProcess:
-        return System.run(f'diff {after} {before} > {patch}')
+        return System.run(f'diff {before} {after} > {patch}')
 
     @staticmethod
     def patch(target: str, patch: str, reject: str) -> subprocess.CompletedProcess:
-        return System.run(f'patch -r {reject} {target} {patch}')
+        return System.run(f'patch -f -r {reject} {target} {patch}')
 
 class SystemRejection(Rejection):
     def __init__(self, reject_file):
         self._file = reject_file
+
+    def get_hunks(self) -> List[Hunk]:
+        lines = System.read(self._file)
 
 class SystemPatch(Patch):
     def __init__(self, patch_file: str, temp_dir: str):
@@ -105,7 +108,7 @@ class SystemPatch(Patch):
         self._applied = False
 
     def get_hunks(self) -> List[Hunk]:
-        raise NotImplementedError
+        lines = System.read(self._file)
 
     def apply(self, target: str) -> Optional[Rejection]:
         if self._applied:
