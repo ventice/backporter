@@ -1,9 +1,11 @@
 from typing import List, Optional
-from dataclasses import dataclass
 from tempfile import TemporaryDirectory
-from enum import Enum
+from dataclasses import dataclass
 import os
+from enum import Enum
 import subprocess
+from formats import Hunk
+import formats
 
 def run_merge():
     from argparse import ArgumentParser
@@ -17,30 +19,6 @@ def run_merge():
     parser.add_argument('--log', action='store', default='hunks.json')
     args = parser.parse_args()
     merge(args.before, args.after, args.target)
-
-@dataclass
-class Chunk:
-    begin: int
-    end: int
-    body: str
-
-    def to_dict(self):
-        return self.__dict__
-
-@dataclass
-class Hunk:
-    source: Chunk
-    destination: Chunk
-
-    @property
-    def id(self):
-        return (self.source.begin, self.source.end)
-
-    def to_dict(self):
-        return json.dumps({
-            'source': self.source.to_dict(),
-            'destination': self.destination.to_dict()
-        })
 
 
 class MergeStatus(Enum):
@@ -57,10 +35,10 @@ class MergedHunk:
         return self.hunk.id
 
     def to_dict(self):
-        return json.dumps({
+        return {
             'status': self.status.name,
             'hunk': self.hunk.to_dict()
-        })
+        }
 
 class HunkSet:
     def get_hunks(self) -> List[Hunk]:
@@ -109,6 +87,7 @@ class SystemPatch(Patch):
 
     def get_hunks(self) -> List[Hunk]:
         lines = System.read(self._file)
+        return formats.parse_diff(lines)
 
     def apply(self, target: str) -> Optional[Rejection]:
         if self._applied:

@@ -93,15 +93,19 @@ def test_system_invokes_patch(monkeypatch):
     backport.System.patch('target', 'patch', 'reject')
     assert run.call_args.args == ('patch -f -r reject target patch',)
 
-def test_patch_reads_the_file(mock_system):
+def test_patch_parses_diff_file_contents(mock_system, monkeypatch):
+    mock_system.read = Mock(return_value=['hello', 'world'])
+    parse_diff = Mock()
     import backport
-    patch = backport.SystemPatch('patch', 'tempdir')
-    patch.get_hunks()
-    assert mock_system.read.call_args.args == ('patch',)
+    parsed_hunks = [backport.Hunk()]
+    parse_diff.return_value = parsed_hunks
+    monkeypatch.setattr('formats.parse_diff', parse_diff)
+    hunks = backport.SystemPatch('patch', 'tempdir').get_hunks()
+    assert parse_diff.call_args.args[0] == ['hello', 'world']
+    assert hunks == parsed_hunks
 
 def test_reject_reads_the_file(mock_system):
     import backport
     patch = backport.SystemRejection('reject')
     patch.get_hunks()
     assert mock_system.read.call_args.args == ('reject',)
-
