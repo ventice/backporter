@@ -45,9 +45,17 @@ class Context(ABC):
     def __init__(self, hunk: Hunk):
         self._hunk = hunk
 
-    @abstractmethod
     def process(self, line: str) -> bool:
-        pass
+        if not line.startswith(self._get_prefix()):
+            return False
+        self._get_chunk().body.append(line[2:])
+        return True
+    
+    @abstractmethod
+    def _get_prefix(self) -> str: pass
+
+    @abstractmethod
+    def _get_chunk(self) -> Chunk: pass
 
 class ChangedContext(Context):
     def __init__(self, hunk: Hunk):
@@ -55,19 +63,23 @@ class ChangedContext(Context):
         self._hunk.type = ChangeType.CHANGED
         self._states = [(self._hunk.source, '<'), (self._hunk.destination, '>')]
         self._current_state = 0
+        self._hunk.source.body = []
+        self._hunk.destination.body = []
 
     def process(self, line: str) -> bool:
-        state = self._states[self._current_state]
         if line.strip() == '---':
             if self._current_state == len(self._states) - 1:
                 raise FormatError(f'Bad format of change hunk. Duplicate separator')
             self._current_state += 1
             return True
-        elif not line.startswith(state[1]):
-            return False
-        state[0].body = state[0].body or []
-        state[0].body.append(line[2:])
-        return True
+        return super(ChangedContext, self).process(line)
+
+    def _get_prefix(self) -> str:
+        return self._states[self._current_state][1]
+
+    def _get_chunk(self) -> Chunk:
+        return self._states[self._current_state][0]
+
 
 class AddedContext(Context):
     def __init__(self, hunk: Hunk):
@@ -76,11 +88,11 @@ class AddedContext(Context):
         self._hunk.source.body = None
         self._hunk.destination.body = []
 
-    def process(self, line: str) -> bool:
-        if not line.startswith('>'):
-            return False
-        self._hunk.destination.body.append(line[2:])
-        return True
+    def _get_prefix(self) -> str:
+        return '>'
+
+    def _get_chunk(self) -> Chunk:
+        return self._hunk.destination
 
 class DeletedContext(Context):
     def __init__(self, hunk: Hunk):
@@ -89,11 +101,11 @@ class DeletedContext(Context):
         self._hunk.source.body = []
         self._hunk.destination.body = None
 
-    def process(self, line: str) -> bool:
-        if not line.startswith('<'):
-            return False
-        self._hunk.source.body.append(line[2:])
-        return True
+    def _get_prefix(self) -> str:
+        return '<'
+
+    def _get_chunk(self) -> Chunk:
+        return self._hunk.source
 
 
 _CONTEXTS = {
