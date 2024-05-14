@@ -156,6 +156,7 @@ class JsonLogger(HunkProcessor):
         return {
             i: Conflict(l, lines[i])
             for i, l in zip(range(hunk.source.begin, hunk.source.end + 1), hunk.source.body)
+                if l != lines[i]
         }
 
     def _get_log(self) -> Dict:
