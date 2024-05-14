@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from tempfile import TemporaryDirectory
 from enum import Enum
 import os
+import subprocess
 
 def run_merge():
     from argparse import ArgumentParser
@@ -80,6 +81,19 @@ class Merger:
     def get_diff(self) -> Patch:
         raise NotImplementedError
 
+class System:
+    @staticmethod
+    def run(command: str) -> subprocess.CompletedProcess:
+        return subprocess.run(command, shell=True, capture_output=True)
+
+    @staticmethod
+    def diff(before: str, after: str, patch: str) -> subprocess.CompletedProcess:
+        return System.run(f'diff {after} {before} > {patch}')
+
+    @staticmethod
+    def patch(target: str, patch: str, reject: str) -> subprocess.CompletedProcess:
+        return System.run(f'patch -r {reject} {target} {patch}')
+
 class SystemRejection(Rejection):
     def __init__(self, reject_file):
         self._file = reject_file
@@ -98,8 +112,7 @@ class SystemPatch(Patch):
             return None
         self._applied = True
         reject_file = os.path.join(self._temp_dir, 'reject')
-        import subprocess
-        result = subprocess.run(f'patch -r {reject_file} {target} {self._file}', shell=True, capture_output=True) 
+        result = System.patch(target, self._file, reject_file)
         if result.returncode == 0:
             return None
         if result.returncode == 1:
@@ -114,9 +127,7 @@ class SystemMerger(Merger):
     def get_diff(self) -> Patch:
         import os
         patch_file = os.path.join(self._temp_dir, 'diff.patch')
-        cmd = f'diff {self._after} {self._before} > {patch_file}'
-        import subprocess
-        result = subprocess.run(cmd, shell=True, capture_output=True)
+        result = System.diff(self._before, self._after, patch_file)
         if result.returncode > 1:
             raise RuntimeError(f'Failed to compute difference between {self._before} and {self._after}')
         return SystemPatch(patch_file, self._temp_dir)
