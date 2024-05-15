@@ -77,3 +77,6 @@ def test_parse_passes_abbreviation_to_corresponding_context():
 def test_throws_if_bad_header_format():
     with pytest.raises(formats.FormatError):
         formats.parse_diff(['hello'])
+
+def test_returns_empty_list_on_empty_input():
+    assert formats.parse_diff([]) == []

@@ -42,3 +42,6 @@ def test_parse_reject_file():
 def test_parse_reject_raises_on_garbage():
     with pytest.raises(formats.FormatError):
         formats.parse_reject(['skip', 'skip', 'bad', 'format'])
+
+def test_returns_empty_list_on_empty_input():
+    assert formats.parse_reject([]) == []

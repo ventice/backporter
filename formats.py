@@ -150,7 +150,8 @@ def parse_diff(lines: List[str], contexts=_CONTEXTS) -> List[Hunk]:
 
         hunk = parse_hunk_header(match.groups())
         context = contexts[match.group(2)](hunk)
-    result.append(hunk)
+    if hunk:
+        result.append(hunk)
     return result    
 
 def reject_hunk_separator(val: Optional[str], hunk: Hunk) -> Optional[Hunk]:
@@ -207,6 +208,6 @@ def parse_reject(lines: List[str]) -> List[Hunk]:
                 break
         else:
             raise FormatError(f'Got unexpected line {line}')
-
-    result.append(hunk)
+    if hunk:
+        result.append(hunk)
     return result
