@@ -1,5 +1,5 @@
 from argparse import ArgumentParser
-from dataclasses import dataclass
+from enum import Enum
 from formats import Hunk
 from tempfile import TemporaryDirectory
 from typing import List, Optional, Dict, Tuple
@@ -7,6 +7,7 @@ import formats
 import json
 import os
 import subprocess
+import sys
 
 class System:
     @staticmethod
@@ -121,6 +122,16 @@ class JsonLogger(HunkProcessor):
             'target': self._target,
             'hunks': [hunk.to_dict() for hunk in self._hunks.values()]
         }
+    
+
+class ExitCodes(Enum):
+    SUCCESS = 0
+    BAD_ARGUMENT = 1
+    RUNTIME_ERROR = 2
+
+def ensure_existing_file(path: str):
+    if not os.path.isfile(path):
+        raise ValueError(f'The path "{path}" does not designate an existing file')
 
 def run_merge():
     parser = ArgumentParser(
@@ -135,9 +146,19 @@ def run_merge():
     parser.add_argument('target', help='The file to incorporate the changes into')
     parser.add_argument('-l', '--log', action='store', dest='log_file', default=None, help='The path of the JSON file to write the operations into.')
     args = parser.parse_args()
-    logger = JsonLogger(args.log_file, args.before, args.after, args.target) if args.log_file else HunkProcessor()
+    try:
+        for path in (args.before, args.after, args.target):
+           ensure_existing_file(path)
+    except ValueError as e:
+        sys.stderr.write(f'ERROR: {e.args[0]}\n')
+        sys.exit(ExitCodes.BAD_ARGUMENT.value)
 
-    merge(args.before, args.after, args.target, logger)
+    try:
+        logger = JsonLogger(args.log_file, args.before, args.after, args.target) if args.log_file else HunkProcessor()
+        merge(args.before, args.after, args.target, logger)
+    except Exception as e:
+        sys.stderr.write(f'ERROR: {e.args[0]}\n')
+        sys.exit(ExitCodes.RUNTIME_ERROR.value)
 
 if __name__ == '__main__':
     run_merge()
