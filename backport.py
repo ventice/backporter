@@ -171,12 +171,15 @@ def run_merge():
     from argparse import ArgumentParser
     parser = ArgumentParser(
         prog='backport',
-        description='Backport changes in C files'
+        description='Backport changes in C files. The tool computes the difference between the files ' 
+        '<before> and <after> and merges them into the file designated by <target>. If --log option is '
+        'specified the detailed information on merged and conflicting hunks is additionally written to '
+        'the provided file in JSON format.'
     )
-    parser.add_argument('before')
-    parser.add_argument('after')
-    parser.add_argument('target')
-    parser.add_argument('--log', action='store', dest='log_file', default=None)
+    parser.add_argument('before', help='The original file path')
+    parser.add_argument('after', help='The file containing the changes to be backported')
+    parser.add_argument('target', help='The file to incorporate the changes into')
+    parser.add_argument('-l', '--log', action='store', dest='log_file', default=None, help='The path of the JSON file to write the operations into.')
     args = parser.parse_args()
     logger = JsonLogger(args.log_file, args.before, args.after, args.target) if args.log_file else HunkProcessor()
 
