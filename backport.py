@@ -154,9 +154,9 @@ class JsonLogger(HunkProcessor):
 
     def _get_conflicts(self, hunk: Hunk, lines: Dict[int, str]) -> Dict[int, Conflict]:
         return {
-            i: Conflict(l, lines[i])
+            i: Conflict(l, lines.get(i, ''))
             for i, l in zip(range(hunk.source.begin, hunk.source.end + 1), hunk.source.body)
-                if l != lines[i]
+                if l != lines.get(i, '')
         }
 
     def _get_log(self) -> Dict:
