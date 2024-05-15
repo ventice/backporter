@@ -134,7 +134,7 @@ def parse_hunk_header(groups: tuple) -> Hunk:
 
 _DIFF_HEADER_PATTERN = regex(r'^(\d+(?:,\d+)?)(\w)(\d+(?:,\d+)?)$')
 
-def parse_diff(lines, contexts=_CONTEXTS) -> List[Hunk]:
+def parse_diff(lines: List[str], contexts=_CONTEXTS) -> List[Hunk]:
     result:  List[Hunk] = []
     context: Context = None
     hunk: Hunk = None
@@ -153,54 +153,53 @@ def parse_diff(lines, contexts=_CONTEXTS) -> List[Hunk]:
     result.append(hunk)
     return result    
 
-def hunk_separator(groups, hunk):
+def reject_hunk_separator(val: Optional[str], hunk: Hunk) -> Optional[Hunk]:
     return Hunk(ChangeType.CHANGED, Chunk(0), Chunk(0))
 
-def header(groups, hunk):
-    nums = list(map(int, groups[0].split(',')))
+def reject_header(val: str, hunk: Hunk) -> Optional[Hunk]:
+    nums = list(map(int, val.split(',')))
     if not (1 <= len(nums) <= 2):
-        raise FormatError(f'Bad format of line numbers in header {groups[0]}')
+        raise FormatError(f'Bad format of line numbers in header {val}')
     hunk.source.begin = nums[0]
     hunk.source.end = nums[1] if len(nums) > 1 else hunk.source.begin
     return None
 
-def chunk_separator(groups, hunk):
-    nums = list(map(int, groups[0].split(',')))
+def reject_chunk_separator(val: str, hunk: Hunk) -> Optional[Hunk]:
+    nums = list(map(int, val.split(',')))
     if not (1 <= len(nums) <= 2):
-        raise FormatError(f'Bad format of line numbers in separator {groups[0]}')
+        raise FormatError(f'Bad format of line numbers in separator {val}')
     hunk.destination.begin = nums[0]
     hunk.destination.end = nums[1] if len(nums) > 1 else hunk.destination.begin
     return None
 
-def source(groups, hunk):
+def reject_source(val: str, hunk: Hunk) -> Optional[Hunk]:
     if not hunk.source.body:
         hunk.source.body = []
-    hunk.source.body.append(groups[0])
+    hunk.source.body.append(val)
     return None
 
-def destination(groups, hunk):
+def reject_destination(val: str, hunk: Hunk) -> Optional[Hunk]:
     if not hunk.destination.body:
         hunk.destination.body = []
-    hunk.destination.body.append(groups[0])
+    hunk.destination.body.append(val)
     return None
 
 _REJECT_GRAMMAR = [
-    (regex(r'^\*{10,}$'), hunk_separator),
-    (regex(r'^\*{3} (\d+(?:,\d+)?)$'), header),
-    (regex(r'^-{3} (\d+(?:,\d+)?) -{5,}$'), chunk_separator),
-    (regex(r'^- (.*)$'), source),
-    (regex(r'^\+ (.*)$'), destination)
+    (regex(r'^\*{10,}$'), reject_hunk_separator),
+    (regex(r'^\*{3} (\d+(?:,\d+)?)$'), reject_header),
+    (regex(r'^-{3} (\d+(?:,\d+)?) -{5,}$'), reject_chunk_separator),
+    (regex(r'^- (.*)$'), reject_source),
+    (regex(r'^\+ (.*)$'), reject_destination)
 ]
 
-def parse_reject(lines) -> List[Hunk]:
+def parse_reject(lines: List[str]) -> List[Hunk]:
     result = []
     hunk: Hunk = None
 
     for line in lines[2:]:
-        line = line.rstrip('\n')
         for pattern, handler in _REJECT_GRAMMAR:
-            if match := pattern.match(line):
-                new_hunk = handler(match.groups(), hunk)
+            if match := pattern.match(line.rstrip('\n')):
+                new_hunk = handler(match.group(1) if match.groups() else None, hunk)
                 if new_hunk:
                     if hunk:
                         result.append(hunk)
@@ -211,4 +210,3 @@ def parse_reject(lines) -> List[Hunk]:
 
     result.append(hunk)
     return result
-
