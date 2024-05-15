@@ -1,57 +1,12 @@
-from typing import List, Optional, Dict
-from tempfile import TemporaryDirectory
+from argparse import ArgumentParser
 from dataclasses import dataclass
+from formats import Hunk
+from tempfile import TemporaryDirectory
+from typing import List, Optional, Dict, Tuple
+import formats
+import json
 import os
 import subprocess
-from formats import Hunk
-import formats
-
-@dataclass
-class Conflict:
-    source: str
-    destination: str
-
-@dataclass
-class RejectedHunk:
-    hunk: Hunk
-    conflicts: Dict[int, Conflict]
-    
-    @property
-    def id(self):
-        return self.hunk.id
-
-    def to_dict(self):
-        return {
-            'status': 'CONFLICT',
-            'hunk': self.hunk.to_dict(),
-            'conficts': [
-                {
-                    'line': line,
-                    'source': conflict.source,
-                    'destination': conflict.destination
-                }
-                for line, conflict in self.conflicts.items()
-            ]
-        }
-
-class HunkSet:
-    def get_hunks(self) -> List[Hunk]:
-        raise NotImplementedError
-
-class Rejection(HunkSet):
-    pass
-
-class Patch(HunkSet):
-    def apply(self, target: str) -> Optional[Rejection]:
-        raise NotImplementedError
-    
-class Merger:
-    def __init__(self, before: str, after: str):
-        self._before = before
-        self._after = after
-
-    def get_diff(self) -> Patch:
-        raise NotImplementedError
 
 class System:
     @staticmethod
@@ -71,7 +26,7 @@ class System:
         with open(path) as f:
             return f.readlines()
 
-class SystemRejection(Rejection):
+class Rejection:
     def __init__(self, reject_file):
         self._file = reject_file
 
@@ -79,7 +34,7 @@ class SystemRejection(Rejection):
         lines = System.read(self._file)
         return formats.parse_reject(lines)
 
-class SystemPatch(Patch):
+class Patch:
     def __init__(self, patch_file: str, temp_dir: str):
         self._file = patch_file
         self._temp_dir = temp_dir
@@ -98,32 +53,32 @@ class SystemPatch(Patch):
         if result.returncode == 0:
             return None
         if result.returncode == 1:
-            return SystemRejection(reject_file)
+            return Rejection(reject_file)
         raise RuntimeError(f'Error occurred while patching the target: {result.stderr}') 
 
-class SystemMerger(Merger):
+class Merger:
     def __init__(self, before: str, after: str, temp_dir: str):
-        super(SystemMerger, self).__init__(before, after)
+        self._before = before
+        self._after = after
         self._temp_dir = temp_dir
 
     def get_diff(self) -> Patch:
-        import os
         patch_file = os.path.join(self._temp_dir, 'diff.patch')
         result = System.diff(self._before, self._after, patch_file)
         if result.returncode > 1:
             raise RuntimeError(f'Failed to compute difference between {self._before} and {self._after}')
-        return SystemPatch(patch_file, self._temp_dir)
+        return Patch(patch_file, self._temp_dir)
 
 class HunkProcessor:
-    def process_diff(self, hunks: HunkSet): pass
+    def process_diff(self, hunks: Patch): pass
 
-    def process_reject(self, hunks: HunkSet): pass
+    def process_reject(self, hunks: Rejection): pass
 
     def finalize(self): pass
 
 def merge(before: str, after: str, target: str, processor: HunkProcessor = HunkProcessor()) -> None:
     with TemporaryDirectory() as temp_dir:
-        merger = SystemMerger(before, after, temp_dir)
+        merger = Merger(before, after, temp_dir)
         patch = merger.get_diff()
         processor.process_diff(patch)
         reject = patch.apply(target)
@@ -139,22 +94,22 @@ class JsonLogger(HunkProcessor):
         self._target = target
         self._hunks = {}
 
-    def process_diff(self, hunks: HunkSet):
+    def process_diff(self, hunks: Patch):
         self._hunks = {hunk.id: hunk for hunk in hunks.get_hunks()}
 
-    def process_reject(self, hunks: HunkSet):
-        target_lines = {no: line for no, line in enumerate(System.read(self._target))}
+    def process_reject(self, hunks: Rejection):
+        target_lines = {no + 1: line for no, line in enumerate(System.read(self._target))}
         for hunk in hunks.get_hunks():
-            self._hunks[hunk.id] = RejectedHunk(hunk, self._get_conflicts(hunk, target_lines))
+            print(hunk.id)
+            self._hunks[hunk.id].conflicts = self._get_conflicts(hunk, target_lines)
 
     def finalize(self):
-        import json
         with open(self._log, 'w') as f:
             f.write(json.dumps(self._get_log(), indent=2))
 
-    def _get_conflicts(self, hunk: Hunk, lines: Dict[int, str]) -> Dict[int, Conflict]:
+    def _get_conflicts(self, hunk: Hunk, lines: Dict[int, str]) -> Dict[int, Tuple[str, str]]:
         return {
-            i: Conflict(l, lines.get(i, ''))
+            i: (l, lines.get(i, ''))
             for i, l in zip(range(hunk.source.begin, hunk.source.end + 1), hunk.source.body)
                 if l != lines.get(i, '')
         }
@@ -168,7 +123,6 @@ class JsonLogger(HunkProcessor):
         }
 
 def run_merge():
-    from argparse import ArgumentParser
     parser = ArgumentParser(
         prog='backport',
         description='Backport changes in C files. The tool computes the difference between the files ' 
