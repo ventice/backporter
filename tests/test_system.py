@@ -74,9 +74,17 @@ def test_reject_parses_the_reject_file(mock_system, mock_tempdir, monkeypatch):
             'testdir/reject': ['reject line 1', 'reject line 2']
     }.get(fn, [])
     parse_reject = Mock()
-    parsed_hunks = [Hunk(ChangeType.CHANGED, Chunk(2, 3, []), None)]
+    parsed_hunks = [Hunk(ChangeType.CHANGED, Chunk(2, 3, []), Chunk(2, 3, []))]
     parse_reject.return_value = parsed_hunks
     monkeypatch.setattr('formats.parse_reject', parse_reject)
     hunks = backport.merge('before', 'after', 'target')
     assert parse_reject.call_args.args[0] == ['reject line 1', 'reject line 2']
     assert list(hunks.values()) == parsed_hunks
+
+def test_finds_conflicts():
+    hunk = Hunk(
+        ChangeType.CHANGED,
+        Chunk(1, 2, ['Hello', 'World']),
+        Chunk(1, 2, ['Hello', 'World!'])
+    )
+    assert backport.get_conflicts(hunk) == {2: ('World', 'World!')}
