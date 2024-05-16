@@ -4,8 +4,8 @@ import pytest
 import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent.absolute()))
-import backport
 from formats import Hunk, Chunk, ChangeType
+import backport
 
 def test_temp_directory_is_used_for_diff_and_patch(mock_tempdir, mock_system):
     mock_tempdir.return_value.__enter__.return_value = 'testdir'

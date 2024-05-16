@@ -1,5 +1,5 @@
-import pytest
 from unittest.mock import Mock, MagicMock
+import pytest
 
 @pytest.fixture
 def mock_system(monkeypatch):

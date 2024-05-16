@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional, Tuple, Dict
 from re import compile as regex
+from typing import List, Optional, Tuple, Dict
 
 @dataclass
 class Chunk:
