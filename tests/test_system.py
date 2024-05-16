@@ -1,4 +1,5 @@
 from pathlib import Path
+from subprocess import PIPE
 from unittest.mock import Mock, MagicMock
 import pytest
 import sys
@@ -7,32 +8,29 @@ sys.path.insert(0, str(Path(__file__).parent.parent.absolute()))
 from formats import Hunk, Chunk, ChangeType
 import backport
 
-def test_temp_directory_is_used_for_diff_and_patch(mock_tempdir, mock_system):
+def test_temp_directory_is_used_for_patch(mock_tempdir, mock_system):
     mock_tempdir.return_value.__enter__.return_value = 'testdir'
     backport.merge('before', 'after', 'target')
-    assert mock_system.diff.call_args.args[2] == 'testdir/diff.patch'
-    assert mock_system.patch.call_args.args[1] == 'testdir/diff.patch'
     assert mock_system.patch.call_args.args[2] == 'testdir/reject'
 
 def test_patch_is_applied_to_target(mock_system, mock_tempdir):
-    mock_system.diff.return_value = Mock(returncode=1)
-    mock_system.patch.return_value = Mock(returncode=0)
+    mock_system.diff.return_value.returncode = 1
     backport.merge('before', 'after', 'target')
     assert mock_system.patch.call_args.args[0] == 'target'
 
 def test_diff_throws_on_trouble(mock_system):
     # 2 in case of any trouble
     mock_system.diff.return_value.returncode = 2
-    mock_system.patch.return_value.returncode = 0
     with pytest.raises(RuntimeError):
         backport.merge('before.c', 'after.c', 'tempdir')
 
-def test_system_is_used_for_patch(mock_system, mock_tempdir):
+def test_system_is_used_for_patch(mock_system, mock_tempdir, monkeypatch):
     mock_tempdir.return_value.__enter__.return_value = 'tempdir'
-    mock_system.patch.return_value.returncode = 0
+    mock_system.diff.return_value.stdout = b'patch data'
+    monkeypatch.setattr('backport.get_patch_hunks', Mock(return_value={}))
+#    monkeypatch.setattr('formats.parse_reject', Mock(return_value=[]))
     backport.merge('before', 'after', 'target')
-    assert mock_system.patch.call_args.args == ('target', 'tempdir/diff.patch', 'tempdir/reject',)
-
+    assert mock_system.patch.call_args.args == ('target', b'patch data', 'tempdir/reject',)
 
 def test_throws_if_patching_fails_for_other_reason(mock_system):
     # Exit code different from merge conflict
@@ -40,23 +38,24 @@ def test_throws_if_patching_fails_for_other_reason(mock_system):
     with pytest.raises(RuntimeError):
         backport.merge('before', 'after', 'target')
 
-def test_system_redirects_diff_output_to_patch_file(monkeypatch):
-    run = Mock()
+def test_system_returns_diff_output(monkeypatch):
+    run = Mock(return_value=Mock(returncode=1, stdout=b'diff output'))
     monkeypatch.setattr('subprocess.run', run)
-    backport.System.diff('before', 'after', 'patch')
-    assert run.call_args.args == ('diff before after > patch',)
+    assert backport.System.diff('before', 'after').stdout == b'diff output'
+    assert run.call_args.args == ('diff before after',)
 
-def test_system_invokes_patch(monkeypatch):
-    run = Mock()
-    monkeypatch.setattr('subprocess.run', run)
-    backport.System.patch('target', 'patch', 'reject')
-    assert run.call_args.args == ('patch -f -r reject target patch',)
+def test_system_pipes_patch_data_to_patch(monkeypatch):
+    communicate = Mock(return_value=(b'', b''))
+    popen = MagicMock()
+    popen.return_value.communicate = communicate
+    monkeypatch.setattr('subprocess.Popen', popen)
+    backport.System.patch('target', b'patch data', 'reject')
+    assert popen.call_args.args[0] == 'patch -f -r reject target'
+    assert popen.call_args.kwargs['stdin'] == PIPE
+    assert communicate.call_args.kwargs['input'] == b'patch data'
 
 def test_patch_parses_diff_file_contents(mock_system, monkeypatch):
-    mock_system.read_lines.side_effect = [
-        ['diff line 1', 'diff line 2'],
-        ['skip', 'skip'],
-    ]
+    mock_system.diff.return_value.stdout=b'diff line 1\ndiff line 2'
     parse_diff = Mock()
     parsed_hunks = [Hunk(ChangeType.ADDED, Chunk(begin=1), None)]
     parse_diff.return_value = parsed_hunks

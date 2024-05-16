@@ -11,24 +11,34 @@ import tempfile
 
 class System:
     @staticmethod
-    def run(command: str) -> subprocess.CompletedProcess:
-        return subprocess.run(command, shell=True, capture_output=True)
+    def diff(before: str, after: str) -> subprocess.CompletedProcess:
+        return subprocess.run(f'diff {before} {after}', shell=True, capture_output=True)
 
     @staticmethod
-    def diff(before: str, after: str, patch: str) -> subprocess.CompletedProcess:
-        return System.run(f'diff {before} {after} > {patch}')
-
-    @staticmethod
-    def patch(target: str, patch: str, reject: str) -> subprocess.CompletedProcess:
-        return System.run(f'patch -f -r {reject} {target} {patch}')
+    def patch(target: str, patch_data: bytes, reject: str) -> subprocess.CompletedProcess:
+        pipe = subprocess.Popen(
+            f'patch -f -r {reject} {target}',
+            shell=True,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        stdout, stderr = pipe.communicate(input=patch_data)
+        return subprocess.CompletedProcess(
+            ['patch', '-f', '-r', reject, target],
+            returncode=pipe.returncode,
+            stdout=stdout,
+            stderr=stderr
+        )
     
     @staticmethod
     def read_lines(path: str) -> List[str]:
         with open(path) as f:
             return f.readlines()
 
-def get_patch_hunks(patch_file: str) -> Dict[id, Hunk]:
-    return {hunk.id: hunk for hunk in formats.parse_diff(System.read_lines(patch_file))}
+def get_patch_hunks(patch_data: bytes) -> Dict[id, Hunk]:
+    lines = list(filter(None, patch_data.decode('utf-8').split('\n')))
+    return {hunk.id: hunk for hunk in formats.parse_diff(lines)}
 
 def update_rejected_hunks(hunks: Dict[int, Hunk], reject_file: str):
     for hunk in formats.parse_reject(System.read_lines(reject_file)):
@@ -46,14 +56,14 @@ def merge(before: str, after: str, target: str) -> Dict[int, Hunk]:
     with tempfile.TemporaryDirectory() as temp_dir:
         hunks = None
     
-        patch_file = os.path.join(temp_dir, 'diff.patch')
-        diff = System.diff(before, after, patch_file)
+        diff = System.diff(before, after)
         if diff.returncode > 1:
             raise RuntimeError(f'Failed to compute difference between {before} and {after}')
-        hunks = get_patch_hunks(patch_file)
+        patch_data = diff.stdout
+        hunks = get_patch_hunks(patch_data)
 
         reject_file = os.path.join(temp_dir, 'reject')
-        patch = System.patch(target, patch_file, reject_file)
+        patch = System.patch(target, patch_data, reject_file)
         if patch.returncode == 2:
             raise RuntimeError(f'Error occurred while patching the target: {patch.stderr}') 
 

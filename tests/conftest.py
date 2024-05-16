@@ -5,7 +5,7 @@ import pytest
 def mock_system(monkeypatch):
     system = Mock()
     system.read_lines.return_value = []
-    system.diff.return_value.returncode = 1
+    system.diff.return_value = Mock(returncode=1, stdout=b'')
     system.patch.return_value.returncode = 0
     monkeypatch.setattr('backport.System', system)
     return system
