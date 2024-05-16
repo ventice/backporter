@@ -1,6 +1,6 @@
 from pathlib import Path
-from unittest.mock import Mock, MagicMock
 from subprocess import PIPE
+from unittest.mock import Mock, MagicMock
 import pytest
 import sys
 
@@ -24,9 +24,11 @@ def test_diff_throws_on_trouble(mock_system):
     with pytest.raises(RuntimeError):
         backport.merge('before.c', 'after.c', 'tempdir')
 
-def test_system_is_used_for_patch(mock_system, mock_tempdir):
+def test_system_is_used_for_patch(mock_system, mock_tempdir, monkeypatch):
     mock_tempdir.return_value.__enter__.return_value = 'tempdir'
     mock_system.diff.return_value.stdout = b'patch data'
+    monkeypatch.setattr('backport.get_patch_hunks', Mock(return_value={}))
+#    monkeypatch.setattr('formats.parse_reject', Mock(return_value=[]))
     backport.merge('before', 'after', 'target')
     assert mock_system.patch.call_args.args == ('target', b'patch data', 'tempdir/reject',)
 
@@ -53,10 +55,7 @@ def test_system_pipes_patch_data_to_patch(monkeypatch):
     assert communicate.call_args.kwargs['input'] == b'patch data'
 
 def test_patch_parses_diff_file_contents(mock_system, monkeypatch):
-    mock_system.read_lines.side_effect = [
-        ['diff line 1', 'diff line 2'],
-        ['skip', 'skip'],
-    ]
+    mock_system.diff.return_value.stdout=b'diff line 1\ndiff line 2'
     parse_diff = Mock()
     parsed_hunks = [Hunk(ChangeType.ADDED, Chunk(begin=1), None)]
     parse_diff.return_value = parsed_hunks

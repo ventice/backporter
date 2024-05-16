@@ -1,9 +1,9 @@
+from pathlib import Path
 import pytest
 import sys
-from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.absolute()))
-from unittest.mock import Mock
 from formats import Hunk, Chunk, ChangeType
+from unittest.mock import Mock
 
 def test_id_is_source_begin():
     hunk = Hunk(type=ChangeType.CHANGED, source=Chunk(begin=1, end=2), destination=Chunk(begin=3, end=4))

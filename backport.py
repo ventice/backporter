@@ -37,7 +37,7 @@ class System:
             return f.readlines()
 
 def get_patch_hunks(patch_data: bytes) -> Dict[id, Hunk]:
-    lines = patch_data.decode('utf-8').rstrip('\n').split('\n')
+    lines = list(filter(None, patch_data.decode('utf-8').split('\n')))
     return {hunk.id: hunk for hunk in formats.parse_diff(lines)}
 
 def update_rejected_hunks(hunks: Dict[int, Hunk], reject_file: str):
